@@ -1,6 +1,6 @@
 # Driver Behavior Detection 🚗🤖
 
-Ứng dụng phát hiện hành vi người điều khiển xe ô tô sử dụng học sâu (Deep Learning) với giao diện web thân thiện.
+Ứng dụng phát hiện hành vi người điều khiển xe ô tô sử dụng học sâu (Deep Learning) với giao diện web thân thiện, được triển khai bằng Streamlit.
 
 ## 📋 Mục lục
 - [Giới thiệu](#giới-thiệu)
@@ -29,9 +29,10 @@ Dự án này sử dụng các mô hình CNN (Convolutional Neural Networks) đ�
 
 - 🖼️ **Phân tích ảnh**: Upload và phân tích ảnh tài xế
 - 🎥 **Phân tích video**: Xử lý video theo từng khung hình
-- 🧠 **Đa mô hình**: So sánh 3 mô hình CNN khác nhau (AlexNet, VGG16, GoogLeNet)
+- 🧠 **Đa mô hình**: So sánh 3 mô hình CNN khác nhau (AlexNet, InceptionV3, GoogLeNet)
 - 📊 **Hiển thị xác suất**: Xem độ tin cậy của từng dự đoán
 - 🌐 **Giao diện web**: Interface thân thiện bằng Streamlit
+- 🚀 **Tự động tải model**: Tự động tải các mô hình từ Google Drive trong lần chạy đầu tiên.
 - 🇻🇳 **Tiếng Việt**: Giao diện hoàn toàn bằng tiếng Việt
 
 ## 💻 Yêu cầu hệ thống
@@ -39,7 +40,7 @@ Dự án này sử dụng các mô hình CNN (Convolutional Neural Networks) đ�
 - Python 3.7+
 - RAM: Tối thiểu 4GB (khuyến nghị 8GB+)
 - GPU: Không bắt buộc nhưng sẽ tăng tốc độ xử lý
-- Dung lượng: ~2GB cho các mô hình
+- Dung lượng: ~250MB cho các mô hình và dependencies.
 
 ## 🚀 Cài đặt
 
@@ -61,12 +62,10 @@ venv\Scripts\activate     # Windows
 ```bash
 pip install -r requirements.txt
 ```
+Thư viện `gdown` đã được thêm vào `requirements.txt` để tải model.
 
-4. **Kiểm tra các mô hình:**
-Đảm bảo các file mô hình trong thư mục `model/`:
-- `alex_model.h5`
-- `vgg16_model.h5` 
-- `inception_model.h5`
+4. **Chuẩn bị mô hình:**
+Không cần thao tác thủ công. Các tệp mô hình sẽ được **tự động tải xuống từ Google Drive** khi bạn khởi động ứng dụng lần đầu tiên.
 
 ## 🏃‍♂️ Cách chạy
 
@@ -77,7 +76,7 @@ streamlit run app.py
 
 2. **Mở trình duyệt:**
 - Ứng dụng sẽ tự động mở tại `http://localhost:8501`
-- Nếu không tự mở, copy link từ terminal
+- **Lưu ý**: Trong lần chạy đầu tiên, ứng dụng sẽ mất một lúc để tải các mô hình (~250MB). Vui lòng chờ cho đến khi quá trình tải hoàn tất.
 
 3. **Dừng ứng dụng:**
 - Nhấn `Ctrl + C` trong terminal
@@ -86,31 +85,43 @@ streamlit run app.py
 
 ### Phân tích ảnh:
 1. Click "Browse files" để upload ảnh (JPG, PNG)
-2. Chọn mô hình muốn sử dụng
-3. Click "Dự đoán"
-4. Xem kết quả và xác suất
+2. Chọn mô hình muốn sử dụng từ thanh bên trái
+3. Xem kết quả và biểu đồ phân tích độ tin cậy
 
 ### Phân tích video:
 1. Upload file video (MP4)
 2. Chọn mô hình
-3. Click "Dự đoán" (có thể mất vài phút)
-4. Sử dụng slider để xem từng khung hình
-5. Xem dự đoán cho từng khung hình
+3. Sử dụng slider để xem dự đoán cho từng khung hình
 
 ## 🔍 Hiểu về code
 
 ### Cấu trúc chính của `app.py`:
 
-#### 1. Import và Load mô hình
+#### 1. Tải và cache mô hình
+Ứng dụng sử dụng `st.cache_resource` để tải và lưu trữ các mô hình, đồng thời tự động tải chúng từ Google Drive nếu chưa có.
+
 ```python
 import streamlit as st
-import tensorflow as tf
-# ... các import khác
+import os
+import gdown
+from tensorflow.keras.models import load_model
 
-# Load 3 mô hình đã được train
-alex_model = load_model('model/alex_model.h5')
-vgg16_model = load_model('model/vgg16_model.h5')
-inception_model = load_model('model/inception_model.h5')
+@st.cache_resource
+def load_models_safely():
+    # ... (Khai báo thông tin model và ID Google Drive)
+    
+    for name, info in model_info.items():
+        # Tải model nếu chưa tồn tại
+        if not os.path.exists(info['path']):
+            st.info(f"Downloading {name} model...")
+            gdown.download(id=info['id'], output=info['path'], quiet=False)
+        
+        # Tải mô hình vào bộ nhớ
+        try:
+            models[name] = load_model(info['path'])
+        except Exception as e:
+            # ... (Xử lý lỗi)
+    return models, model_info
 ```
 
 #### 2. Tiền xử lý ảnh
@@ -119,14 +130,11 @@ def preprocess_image(image, target_size=(224, 224)):
     # Chuyển sang RGB nếu cần
     if image.mode != "RGB":
         image = image.convert("RGB")
-    
     # Resize về kích thước chuẩn
     img = image.resize(target_size)
-    
     # Chuyển sang array và thêm batch dimension
     img = img_to_array(img)
     img = np.expand_dims(img, axis=0)
-    
     # Normalize về [0,1]
     img = img / 255.0
     return img
@@ -134,86 +142,55 @@ def preprocess_image(image, target_size=(224, 224)):
 
 #### 3. Hàm dự đoán
 ```python
-def predict(model, image):
-    # Tiền xử lý ảnh
+def predict_with_confidence(model, image):
     processed_image = preprocess_image(image)
-    
-    # Dự đoán với mô hình
     predictions = model.predict(processed_image)
-    
-    # Lấy class có xác suất cao nhất
-    predicted_class = class_names[np.argmax(predictions)]
-    
-    return predicted_class, predictions
+    # ... (Xử lý và trả về kết quả)
 ```
-
-#### 4. Giao diện Streamlit
-- `st.file_uploader()`: Upload file
-- `st.selectbox()`: Chọn mô hình
-- `st.button()`: Nút dự đoán
-- `st.image()`: Hiển thị ảnh
-- `st.video()`: Hiển thị video
-- `st.slider()`: Điều khiển khung hình video
-
-#### 5. Xử lý video
-- Sử dụng OpenCV để đọc từng frame
-- Chuyển đổi BGR sang RGB
-- Dự đoán cho từng frame
-- Lưu kết quả vào session state
-
-### Workflow xử lý:
-1. **Upload** → 2. **Detect file type** → 3. **Preprocess** → 4. **Model predict** → 5. **Display results**
-
-## 📁 Cấu trúc dự án
 
 ## 🧠 Mô hình
 
 ### 1. AlexNet
 - **Kiến trúc**: 8 layers (5 conv + 3 dense)
-- **Kích thước input**: 224x224x3
-- **Ưu điểm**: Nhanh, phù hợp real-time
-- **Nhược điểm**: Độ chính xác thấp hơn
+- **Ưu điểm**: Nhẹ, nhanh, phù hợp cho các tác vụ cần tốc độ cao hoặc trên các thiết bị cấu hình thấp.
+- **Nhược điểm**: Độ chính xác thấp hơn so với các mô hình hiện đại.
 
-### 2. VGG16
-- **Kiến trúc**: 16 layers với conv 3x3
-- **Kích thước input**: 224x224x3
-- **Ưu điểm**: Độ chính xác cao, ổn định
-- **Nhược điểm**: Nặng, chậm hơn
+### 2. InceptionV3
+- **Kiến trúc**: Sử dụng các "Inception module" để xử lý song song các filter với kích thước khác nhau.
+- **Ưu điểm**: Độ chính xác cao, hiệu quả về mặt tính toán hơn VGG.
+- **Nhược điểm**: Nặng hơn AlexNet và GoogLeNet (phiên bản trong dự án này).
 
 ### 3. GoogLeNet (Inception V1)
-- **Kiến trúc**: Inception modules
-- **Kích thước input**: 224x224x3
-- **Ưu điểm**: Cân bằng tốc độ và độ chính xác
-- **Nhược điểm**: Phức tạp hơn
+- **Kiến trúc**: Phiên bản đầu tiên của kiến trúc Inception.
+- **Ưu điểm**: Đạt được sự cân bằng rất tốt giữa tốc độ, kích thước model và độ chính xác.
+- **Nhược điểm**: Phức tạp hơn AlexNet.
+
+### Lựa chọn nào là tốt nhất?
+**GoogLeNet (Inception V1)** thường là lựa chọn tối ưu nhất trong dự án này vì nó cung cấp một điểm cân bằng tuyệt vời giữa hiệu suất (độ chính xác) và hiệu quả (tốc độ, kích thước), rất phù hợp cho các ứng dụng thực tế.
 
 ## 🔧 Troubleshooting
 
 ### Lỗi thường gặp:
 
 1. **ModuleNotFoundError**:
-```bash
-pip install -r requirements.txt
-```
+   Hãy chắc chắn bạn đã chạy:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-2. **Mô hình không load được**:
-- Kiểm tra file .h5 trong thư mục model/
-- Đảm bảo TensorFlow version tương thích
+2. **Lỗi tải mô hình**:
+   - Kiểm tra kết nối Internet.
+   - Đảm bảo các ID file trên Google Drive trong `app.py` là chính xác và tệp được chia sẻ công khai.
 
-3. **Out of memory**:
-- Giảm kích thước batch
-- Sử dụng ảnh có resolution thấp hơn
-
-4. **Video không xử lý được**:
-- Kiểm tra codec video
-- Thử convert sang MP4 standard
+3. **Out of memory (Hết bộ nhớ)**:
+   - Khởi động lại ứng dụng.
+   - Nếu deploy, hãy chọn một nền tảng cung cấp đủ RAM (tối thiểu 2GB).
 
 ## 📈 Cải tiến có thể
 
-- [ ] Thêm mô hình YOLO cho object detection
 - [ ] Hỗ trợ webcam real-time
-- [ ] API endpoint cho mobile app
-- [ ] Thêm các metrics đánh giá mô hình
-- [ ] Export kết quả dưới dạng CSV/JSON
+- [ ] API endpoint cho các ứng dụng khác
+- [ ] Export kết quả phân tích ra file CSV/JSON
 
 ## 🤝 Đóng góp
 
@@ -223,32 +200,6 @@ pip install -r requirements.txt
 4. Push to branch (`git push origin feature/AmazingFeature`)
 5. Tạo Pull Request
 
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
-## 📞 Liên hệ
-
-- Email: your.email@example.com
-- Project Link: [https://github.com/yourusername/driver-behavior](https://github.com/yourusername/driver-behavior)
-
 ---
 
 **⚠️ Lưu ý**: Dự án này chỉ mang tính chất học tập và nghiên cứu. Không sử dụng cho mục đích thương mại hoặc trong môi trường production mà không có kiểm thử kỹ lưỡng.
-
-Chọn VGG16 nếu:
-Độ chính xác là ưu tiên số 1
-Có đủ tài nguyên máy tính
-Không quan tâm tốc độ xử lý
-Dữ liệu test phức tạp
-Chọn AlexNet nếu:
-Tài nguyên máy rất hạn chế
-Cần tốc độ cực nhanh
-Chấp nhận độ chính xác thấp hơn
-Prototype/demo nhanh
-🚀 Kết luận:
-GoogLeNet (Inception V1) là lựa chọn tối ưu nhất vì:
-Sweet spot giữa performance và efficiency
-Practical cho ứng dụng thực tế
-Scalable dễ mở rộng và triển khai
-Modern architecture với Inception modules
