@@ -470,6 +470,56 @@ if uploaded_file is not None:
                 unique_behaviors = len(set([p['class'] for p in predictions]))
                 st.metric("🔄 Số hành vi khác nhau", unique_behaviors)
             
+            # Thêm phần thống kê chi tiết cho từng hành vi
+            st.markdown("#### 📈 Thống kê chi tiết theo hành vi")
+            
+            # Tính toán số lượng và tỷ lệ cho từng hành vi
+            behavior_counts = {}
+            total_frames = len(predictions)
+            
+            for pred in predictions:
+                behavior = pred['class']
+                if behavior not in behavior_counts:
+                    behavior_counts[behavior] = 0
+                behavior_counts[behavior] += 1
+            
+            # Tạo DataFrame cho biểu đồ và bảng
+            behavior_stats = []
+            for behavior in class_names:
+                count = behavior_counts.get(behavior, 0)
+                percentage = (count / total_frames) * 100
+                behavior_stats.append({
+                    'Hành vi': behavior,
+                    'Số khung hình': count,
+                    'Tỷ lệ (%)': f"{percentage:.1f}%"
+                })
+            
+            # Hiển thị biểu đồ
+            df_stats = pd.DataFrame(behavior_stats)
+            fig = px.bar(
+                df_stats,
+                x='Hành vi',
+                y='Số khung hình',
+                color='Hành vi',
+                title='📊 Phân bố số lượng khung hình theo hành vi',
+                labels={'Số khung hình': 'Số lượng khung hình'},
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig.update_layout(
+                xaxis_title="Hành vi",
+                yaxis_title="Số lượng khung hình",
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Hiển thị bảng thống kê
+            st.markdown("#### 📋 Bảng thống kê chi tiết")
+            st.dataframe(
+                df_stats,
+                use_container_width=True,
+                hide_index=True
+            )
+
             # Frame-by-frame analysis
             st.markdown("#### 🔍 Phân tích từng khung hình")
             
