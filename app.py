@@ -266,295 +266,336 @@ st.markdown("## 📤 Tải lên file")
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    uploaded_file = st.file_uploader(
+    uploaded_files = st.file_uploader(
         "Chọn ảnh hoặc video để phân tích",
         type=["jpg", "jpeg", "png", "mp4"],
-        help="Hỗ trợ: JPG, PNG, MP4. Kích thước tối đa: 200MB"
+        help="Hỗ trợ: JPG, PNG, MP4. Kích thước tối đa: 200MB",
+        accept_multiple_files=True  # Cho phép tải nhiều file
     )
 
 with col2:
-    if uploaded_file:
-        file_size = len(uploaded_file.getvalue()) / (1024 * 1024)  # MB
-        st.metric("📁 Kích thước file", f"{file_size:.2f} MB")
-        
-        file_type = uploaded_file.type.split('/')[0]
-        st.metric("📋 Loại file", file_type.upper())
+    if uploaded_files:
+        total_size = sum(len(file.getvalue()) for file in uploaded_files) / (1024 * 1024)  # MB
+        st.metric("📁 Tổng kích thước", f"{total_size:.2f} MB")
+        st.metric("📋 Số lượng file", len(uploaded_files))
 
 # ================================
 # 🖼️ IMAGE PROCESSING
 # ================================
-if uploaded_file is not None:
-    file_extension = uploaded_file.name.split('.')[-1].lower()
+if uploaded_files:
+    # Tạo tabs cho từng file
+    tabs = st.tabs([f"File {i+1}: {file.name}" for i, file in enumerate(uploaded_files)])
     
-    if file_extension in ["jpg", "jpeg", "png"]:
-        # Display image in columns
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            st.markdown("### 🖼️ Ảnh gốc")
-            image = Image.open(uploaded_file)
-            st.image(image, caption='Ảnh đã tải lên', use_column_width=True)
+    for i, (tab, uploaded_file) in enumerate(zip(tabs, uploaded_files)):
+        with tab:
+            file_extension = uploaded_file.name.split('.')[-1].lower()
             
-            # Image info
-            width, height = image.size
-            st.info(f"📐 Kích thước: {width} x {height} pixels")
-        
-        with col2:
-            st.markdown("### 🔍 Kết quả phân tích")
+            if file_extension in ["jpg", "jpeg", "png"]:
+                # Display image in columns
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.markdown("### 🖼️ Ảnh gốc")
+                    image = Image.open(uploaded_file)
+                    st.image(image, caption='Ảnh đã tải lên', use_column_width=True)
+                    
+                    # Image info
+                    width, height = image.size
+                    st.info(f"📐 Kích thước: {width} x {height} pixels")
+                
+                with col2:
+                    st.markdown("### 🔍 Kết quả phân tích")
+                    
+                    if st.button(f"🚀 Phân tích ảnh {i+1}", type="primary", use_container_width=True, key=f"analyze_{i}"):
+                        with st.spinner('🤖 AI đang phân tích...'):
+                            try:
+                                model = models[selected_model_name]
+                                predicted_class, confidence, all_predictions = predict_with_confidence(model, image)
+                                
+                                # Main result
+                                confidence_class = get_confidence_color(confidence)
+                                st.markdown(f"""
+                                <div class="result-card">
+                                    <h2>🎯 Kết quả dự đoán</h2>
+                                    <h1>{predicted_class}</h1>
+                                    <p class="{confidence_class}">Độ tin cậy: {confidence:.1f}%</p>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Confidence warning
+                                if confidence < confidence_threshold:
+                                    st.warning(f"⚠️ Độ tin cậy thấp ({confidence:.1f}% < {confidence_threshold}%). Kết quả có thể không chính xác.")
+                                else:
+                                    st.success(f"✅ Kết quả có độ tin cậy cao ({confidence:.1f}%)")
+                                
+                                # Detailed results
+                                if show_details:
+                                    st.markdown("### 📊 Chi tiết kết quả")
+                                    
+                                    # Interactive chart
+                                    fig = create_prediction_chart(all_predictions)
+                                    st.plotly_chart(fig, use_container_width=True)
+                                    
+                                    # Detailed table
+                                    df_results = pd.DataFrame({
+                                        '🎯 Hành vi': class_names,
+                                        '📊 Độ tin cậy (%)': [f"{p*100:.2f}%" for p in all_predictions],
+                                        '📈 Điểm số': [f"{p:.4f}" for p in all_predictions]
+                                    })
+                                    
+                                    # Highlight the predicted class
+                                    def highlight_max(s):
+                                        is_max = s == s.max()
+                                        return ['background-color: #ffeb3b' if v else '' for v in is_max]
+                                    
+                                    st.dataframe(
+                                        df_results.style.apply(highlight_max, subset=['📈 Điểm số']),
+                                        use_container_width=True
+                                    )
+                                    
+                            except Exception as e:
+                                st.error(f"❌ Lỗi khi phân tích: {str(e)}")
             
-            if st.button("🚀 Bắt đầu phân tích", type="primary", use_container_width=True):
-                with st.spinner('🤖 AI đang phân tích...'):
-                    try:
-                        model = models[selected_model_name]
-                        predicted_class, confidence, all_predictions = predict_with_confidence(model, image)
+            elif file_extension == "mp4":
+                st.markdown("### 🎥 Video Analysis")
+                
+                # Video preview
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    tfile = tempfile.NamedTemporaryFile(delete=False)
+                    tfile.write(uploaded_file.read())
+                    tfile.close()
+                    
+                    st.video(tfile.name)
+                    
+                with col2:
+                    # Video info
+                    video_cap = cv2.VideoCapture(tfile.name)
+                    total_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    fps = video_cap.get(cv2.CAP_PROP_FPS)
+                    duration = total_frames / fps if fps > 0 else 0
+                    video_cap.release()
+                    
+                    st.metric("🎬 Tổng số khung hình", f"{total_frames:,}")
+                    st.metric("⏱️ Thời lượng", f"{duration:.2f}s")
+                    st.metric("📹 FPS", f"{fps:.1f}")
+                
+                # Video processing options
+                st.markdown("### ⚙️ Tùy chọn phân tích video")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    frame_skip = st.slider("Bỏ qua khung hình", 1, 10, 3, help="Phân tích mỗi N khung hình để tăng tốc")
+                with col2:
+                    max_frames = st.slider("Số khung tối đa", 10, min(100, total_frames), 30)
+                
+                if st.button("🎬 Phân tích video", type="primary", use_container_width=True):
+                    with st.spinner(f'🎥 Đang phân tích {max_frames} khung hình...'):
+                        try:
+                            video = cv2.VideoCapture(tfile.name)
+                            model = models[selected_model_name]
+                            
+                            predictions = []
+                            frames = []
+                            frame_count = 0
+                            analyzed_count = 0
+                            
+                            # Progress bar
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+                            
+                            while video.isOpened() and analyzed_count < max_frames:
+                                success, frame = video.read()
+                                if not success:
+                                    break
+                                
+                                if frame_count % frame_skip == 0:
+                                    # Process frame
+                                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                                    image = Image.fromarray(frame_rgb)
+                                    
+                                    predicted_class, confidence, all_pred = predict_with_confidence(model, image)
+                                    predictions.append({
+                                        'frame': frame_count,
+                                        'class': predicted_class,
+                                        'confidence': confidence,
+                                        'predictions': all_pred
+                                    })
+                                    frames.append(frame_rgb)
+                                    analyzed_count += 1
+                                    
+                                    # Update progress
+                                    progress = analyzed_count / max_frames
+                                    progress_bar.progress(progress)
+                                    status_text.text(f'Đã phân tích: {analyzed_count}/{max_frames} khung hình')
+                                
+                                frame_count += 1
+                            
+                            video.release()
+                            os.remove(tfile.name)
+                            
+                            # Store results in session state
+                            st.session_state.video_predictions = predictions
+                            st.session_state.video_frames = frames
+                            
+                            st.success(f"✅ Hoàn thành phân tích {analyzed_count} khung hình!")
+                            
+                        except Exception as e:
+                            st.error(f"❌ Lỗi khi phân tích video: {str(e)}")
+                
+                # Display video results
+                if 'video_predictions' in st.session_state:
+                    st.markdown("### 📊 Kết quả phân tích video")
+                    
+                    predictions = st.session_state.video_predictions
+                    frames = st.session_state.video_frames
+                    
+                    # Summary statistics
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        avg_confidence = np.mean([p['confidence'] for p in predictions])
+                        st.metric("📊 Độ tin cậy TB", f"{avg_confidence:.1f}%")
+                    
+                    with col2:
+                        most_common = max(set([p['class'] for p in predictions]), 
+                                        key=[p['class'] for p in predictions].count)
+                        st.metric("🎯 Hành vi chủ đạo", most_common)
+                    
+                    with col3:
+                        high_conf_count = sum(1 for p in predictions if p['confidence'] >= confidence_threshold)
+                        st.metric("✅ Kết quả tin cậy", f"{high_conf_count}/{len(predictions)}")
+                    
+                    with col4:
+                        unique_behaviors = len(set([p['class'] for p in predictions]))
+                        st.metric("🔄 Số hành vi khác nhau", unique_behaviors)
+                    
+                    # Thêm phần thống kê chi tiết cho từng hành vi
+                    st.markdown("#### 📈 Thống kê chi tiết theo hành vi")
+                    
+                    # Tính toán số lượng và tỷ lệ cho từng hành vi
+                    behavior_counts = {}
+                    total_frames = len(predictions)
+                    
+                    for pred in predictions:
+                        behavior = pred['class']
+                        if behavior not in behavior_counts:
+                            behavior_counts[behavior] = 0
+                        behavior_counts[behavior] += 1
+                    
+                    # Tạo DataFrame cho biểu đồ và bảng
+                    behavior_stats = []
+                    for behavior in class_names:
+                        count = behavior_counts.get(behavior, 0)
+                        percentage = (count / total_frames) * 100
+                        behavior_stats.append({
+                            'Hành vi': behavior,
+                            'Số khung hình': count,
+                            'Tỷ lệ (%)': f"{percentage:.1f}%"
+                        })
+                    
+                    # Hiển thị biểu đồ
+                    df_stats = pd.DataFrame(behavior_stats)
+                    fig = px.bar(
+                        df_stats,
+                        x='Hành vi',
+                        y='Số khung hình',
+                        color='Hành vi',
+                        title='📊 Phân bố số lượng khung hình theo hành vi',
+                        labels={'Số khung hình': 'Số lượng khung hình'},
+                        color_discrete_sequence=px.colors.qualitative.Set3
+                    )
+                    fig.update_layout(
+                        xaxis_title="Hành vi",
+                        yaxis_title="Số lượng khung hình",
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Hiển thị bảng thống kê
+                    st.markdown("#### 📋 Bảng thống kê chi tiết")
+                    st.dataframe(
+                        df_stats,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    # Frame-by-frame analysis
+                    st.markdown("#### 🔍 Phân tích từng khung hình")
+                    
+                    frame_idx = st.slider(
+                        "Chọn khung hình", 
+                        0, len(frames) - 1, 0,
+                        help="Kéo để xem kết quả phân tích từng khung hình"
+                    )
+                    
+                    col1, col2 = st.columns([1, 1])
+                    
+                    with col1:
+                        st.image(
+                            frames[frame_idx], 
+                            caption=f'Khung hình {predictions[frame_idx]["frame"] + 1}',
+                            use_column_width=True
+                        )
+                    
+                    with col2:
+                        pred = predictions[frame_idx]
+                        confidence_class = get_confidence_color(pred['confidence'])
                         
-                        # Main result
-                        confidence_class = get_confidence_color(confidence)
                         st.markdown(f"""
                         <div class="result-card">
-                            <h2>🎯 Kết quả dự đoán</h2>
-                            <h1>{predicted_class}</h1>
-                            <p class="{confidence_class}">Độ tin cậy: {confidence:.1f}%</p>
+                            <h3>🎯 Khung hình {pred['frame'] + 1}</h3>
+                            <h2>{pred['class']}</h2>
+                            <p class="{confidence_class}">Độ tin cậy: {pred['confidence']:.1f}%</p>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # Confidence warning
-                        if confidence < confidence_threshold:
-                            st.warning(f"⚠️ Độ tin cậy thấp ({confidence:.1f}% < {confidence_threshold}%). Kết quả có thể không chính xác.")
-                        else:
-                            st.success(f"✅ Kết quả có độ tin cậy cao ({confidence:.1f}%)")
-                        
-                        # Detailed results
                         if show_details:
-                            st.markdown("### 📊 Chi tiết kết quả")
-                            
-                            # Interactive chart
-                            fig = create_prediction_chart(all_predictions)
-                            st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Detailed table
-                            df_results = pd.DataFrame({
-                                '🎯 Hành vi': class_names,
-                                '📊 Độ tin cậy (%)': [f"{p*100:.2f}%" for p in all_predictions],
-                                '📈 Điểm số': [f"{p:.4f}" for p in all_predictions]
-                            })
-                            
-                            # Highlight the predicted class
-                            def highlight_max(s):
-                                is_max = s == s.max()
-                                return ['background-color: #ffeb3b' if v else '' for v in is_max]
-                            
-                            st.dataframe(
-                                df_results.style.apply(highlight_max, subset=['📈 Điểm số']),
-                                use_container_width=True
-                            )
-                            
-                    except Exception as e:
-                        st.error(f"❌ Lỗi khi phân tích: {str(e)}")
+                            # Mini chart for this frame
+                            fig_mini = create_prediction_chart(pred['predictions'])
+                            fig_mini.update_layout(height=300)
+                            st.plotly_chart(fig_mini, use_container_width=True)
 
-# ================================
-# 🎥 VIDEO PROCESSING  
-# ================================
-    elif file_extension == "mp4":
-        st.markdown("### 🎥 Video Analysis")
-        
-        # Video preview
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            tfile = tempfile.NamedTemporaryFile(delete=False)
-            tfile.write(uploaded_file.read())
-            tfile.close()
-            
-            st.video(tfile.name)
-            
-        with col2:
-            # Video info
-            video_cap = cv2.VideoCapture(tfile.name)
-            total_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = video_cap.get(cv2.CAP_PROP_FPS)
-            duration = total_frames / fps if fps > 0 else 0
-            video_cap.release()
-            
-            st.metric("🎬 Tổng số khung hình", f"{total_frames:,}")
-            st.metric("⏱️ Thời lượng", f"{duration:.2f}s")
-            st.metric("📹 FPS", f"{fps:.1f}")
-        
-        # Video processing options
-        st.markdown("### ⚙️ Tùy chọn phân tích video")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            frame_skip = st.slider("Bỏ qua khung hình", 1, 10, 3, help="Phân tích mỗi N khung hình để tăng tốc")
-        with col2:
-            max_frames = st.slider("Số khung tối đa", 10, min(100, total_frames), 30)
-        
-        if st.button("🎬 Phân tích video", type="primary", use_container_width=True):
-            with st.spinner(f'🎥 Đang phân tích {max_frames} khung hình...'):
-                try:
-                    video = cv2.VideoCapture(tfile.name)
-                    model = models[selected_model_name]
-                    
-                    predictions = []
-                    frames = []
-                    frame_count = 0
-                    analyzed_count = 0
-                    
-                    # Progress bar
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    while video.isOpened() and analyzed_count < max_frames:
-                        success, frame = video.read()
-                        if not success:
-                            break
+# Thêm nút phân tích tất cả ảnh
+if uploaded_files and any(f.name.split('.')[-1].lower() in ["jpg", "jpeg", "png"] for f in uploaded_files):
+    if st.button("🚀 Phân tích tất cả ảnh", type="primary", use_container_width=True):
+        with st.spinner('🤖 AI đang phân tích tất cả ảnh...'):
+            try:
+                # Tạo DataFrame để lưu kết quả
+                all_results = []
+                
+                for i, uploaded_file in enumerate(uploaded_files):
+                    if uploaded_file.name.split('.')[-1].lower() in ["jpg", "jpeg", "png"]:
+                        image = Image.open(uploaded_file)
+                        model = models[selected_model_name]
+                        predicted_class, confidence, _ = predict_with_confidence(model, image)
                         
-                        if frame_count % frame_skip == 0:
-                            # Process frame
-                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            image = Image.fromarray(frame_rgb)
-                            
-                            predicted_class, confidence, all_pred = predict_with_confidence(model, image)
-                            predictions.append({
-                                'frame': frame_count,
-                                'class': predicted_class,
-                                'confidence': confidence,
-                                'predictions': all_pred
-                            })
-                            frames.append(frame_rgb)
-                            analyzed_count += 1
-                            
-                            # Update progress
-                            progress = analyzed_count / max_frames
-                            progress_bar.progress(progress)
-                            status_text.text(f'Đã phân tích: {analyzed_count}/{max_frames} khung hình')
-                        
-                        frame_count += 1
-                    
-                    video.release()
-                    os.remove(tfile.name)
-                    
-                    # Store results in session state
-                    st.session_state.video_predictions = predictions
-                    st.session_state.video_frames = frames
-                    
-                    st.success(f"✅ Hoàn thành phân tích {analyzed_count} khung hình!")
-                    
-                except Exception as e:
-                    st.error(f"❌ Lỗi khi phân tích video: {str(e)}")
-        
-        # Display video results
-        if 'video_predictions' in st.session_state:
-            st.markdown("### 📊 Kết quả phân tích video")
-            
-            predictions = st.session_state.video_predictions
-            frames = st.session_state.video_frames
-            
-            # Summary statistics
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                avg_confidence = np.mean([p['confidence'] for p in predictions])
-                st.metric("📊 Độ tin cậy TB", f"{avg_confidence:.1f}%")
-            
-            with col2:
-                most_common = max(set([p['class'] for p in predictions]), 
-                                key=[p['class'] for p in predictions].count)
-                st.metric("🎯 Hành vi chủ đạo", most_common)
-            
-            with col3:
-                high_conf_count = sum(1 for p in predictions if p['confidence'] >= confidence_threshold)
-                st.metric("✅ Kết quả tin cậy", f"{high_conf_count}/{len(predictions)}")
-            
-            with col4:
-                unique_behaviors = len(set([p['class'] for p in predictions]))
-                st.metric("🔄 Số hành vi khác nhau", unique_behaviors)
-            
-            # Thêm phần thống kê chi tiết cho từng hành vi
-            st.markdown("#### 📈 Thống kê chi tiết theo hành vi")
-            
-            # Tính toán số lượng và tỷ lệ cho từng hành vi
-            behavior_counts = {}
-            total_frames = len(predictions)
-            
-            for pred in predictions:
-                behavior = pred['class']
-                if behavior not in behavior_counts:
-                    behavior_counts[behavior] = 0
-                behavior_counts[behavior] += 1
-            
-            # Tạo DataFrame cho biểu đồ và bảng
-            behavior_stats = []
-            for behavior in class_names:
-                count = behavior_counts.get(behavior, 0)
-                percentage = (count / total_frames) * 100
-                behavior_stats.append({
-                    'Hành vi': behavior,
-                    'Số khung hình': count,
-                    'Tỷ lệ (%)': f"{percentage:.1f}%"
-                })
-            
-            # Hiển thị biểu đồ
-            df_stats = pd.DataFrame(behavior_stats)
-            fig = px.bar(
-                df_stats,
-                x='Hành vi',
-                y='Số khung hình',
-                color='Hành vi',
-                title='📊 Phân bố số lượng khung hình theo hành vi',
-                labels={'Số khung hình': 'Số lượng khung hình'},
-                color_discrete_sequence=px.colors.qualitative.Set3
-            )
-            fig.update_layout(
-                xaxis_title="Hành vi",
-                yaxis_title="Số lượng khung hình",
-                showlegend=False
-            )
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Hiển thị bảng thống kê
-            st.markdown("#### 📋 Bảng thống kê chi tiết")
-            st.dataframe(
-                df_stats,
-                use_container_width=True,
-                hide_index=True
-            )
-
-            # Frame-by-frame analysis
-            st.markdown("#### 🔍 Phân tích từng khung hình")
-            
-            frame_idx = st.slider(
-                "Chọn khung hình", 
-                0, len(frames) - 1, 0,
-                help="Kéo để xem kết quả phân tích từng khung hình"
-            )
-            
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.image(
-                    frames[frame_idx], 
-                    caption=f'Khung hình {predictions[frame_idx]["frame"] + 1}',
-                    use_column_width=True
+                        all_results.append({
+                            'File': uploaded_file.name,
+                            'Hành vi': predicted_class,
+                            'Độ tin cậy (%)': f"{confidence:.1f}%"
+                        })
+                
+                # Hiển thị kết quả tổng hợp
+                st.markdown("### 📊 Kết quả phân tích tất cả ảnh")
+                df_all_results = pd.DataFrame(all_results)
+                st.dataframe(df_all_results, use_container_width=True)
+                
+                # Thống kê tổng hợp
+                st.markdown("### 📈 Thống kê tổng hợp")
+                behavior_counts = df_all_results['Hành vi'].value_counts()
+                
+                # Biểu đồ phân bố hành vi
+                fig = px.pie(
+                    values=behavior_counts.values,
+                    names=behavior_counts.index,
+                    title='Phân bố hành vi trong tất cả ảnh'
                 )
-            
-            with col2:
-                pred = predictions[frame_idx]
-                confidence_class = get_confidence_color(pred['confidence'])
+                st.plotly_chart(fig, use_container_width=True)
                 
-                st.markdown(f"""
-                <div class="result-card">
-                    <h3>🎯 Khung hình {pred['frame'] + 1}</h3>
-                    <h2>{pred['class']}</h2>
-                    <p class="{confidence_class}">Độ tin cậy: {pred['confidence']:.1f}%</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if show_details:
-                    # Mini chart for this frame
-                    fig_mini = create_prediction_chart(pred['predictions'])
-                    fig_mini.update_layout(height=300)
-                    st.plotly_chart(fig_mini, use_container_width=True)
+            except Exception as e:
+                st.error(f"❌ Lỗi khi phân tích: {str(e)}")
 
 # ================================
 # 📊 FOOTER STATISTICS
